@@ -119,16 +119,35 @@ def safe_chmod(path, mode):
 
 def ensure_console_utf8():
     """
-    尝试让控制台使用 UTF-8。
+    尽量修复 Windows PowerShell / CMD 中文乱码问题。
 
-    主要用于 Windows PowerShell / CMD，避免中文输出乱码。
-    失败不影响脚本运行。
+    处理内容：
+    1. 设置 Python stdout/stderr 为 UTF-8
+    2. Windows 下调用系统 API 设置控制台输入/输出代码页为 UTF-8
+    3. 设置 PYTHONUTF8 环境变量
     """
     try:
+        os.environ.setdefault("PYTHONUTF8", "1")
+    except Exception:
+        pass
+
+    if is_windows():
+        try:
+            import ctypes
+
+            kernel32 = ctypes.windll.kernel32
+
+            # 65001 = UTF-8
+            kernel32.SetConsoleOutputCP(65001)
+            kernel32.SetConsoleCP(65001)
+        except Exception:
+            pass
+
+    try:
         if hasattr(sys.stdout, "reconfigure"):
-            sys.stdout.reconfigure(encoding="utf-8")
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
         if hasattr(sys.stderr, "reconfigure"):
-            sys.stderr.reconfigure(encoding="utf-8")
+            sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
         pass
 
