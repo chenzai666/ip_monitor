@@ -23,6 +23,13 @@ if sys.platform == 'win32':
     except Exception:
         pass
 
+import argparse
+import platform
+import ssl
+import urllib.request
+import urllib.error
+from datetime import datetime
+
 # 默认设置（跨平台）
 DEFAULT_LOG_DIR = str(Path.home() / ".ip_monitor")
 DEFAULT_LOG_FILE = os.path.join(DEFAULT_LOG_DIR, "ip_history.log")
