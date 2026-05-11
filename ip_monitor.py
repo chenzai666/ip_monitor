@@ -10,6 +10,7 @@ IP监控脚本 - 公网IP专用版本
 
 # Windows 强制 UTF-8，必须在所有 import 之前
 import os, sys
+from pathlib import Path
 if sys.platform == 'win32':
     os.environ['PYTHONIOENCODING'] = 'utf-8'
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
