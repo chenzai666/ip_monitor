@@ -19,6 +19,10 @@ python ip_monitor.py --proxy http://127.0.0.1:7890
 # 组合使用
 python ip_monitor.py --verbose --proxy http://127.0.0.1:10808 --log D:/ip.log
 ```
+```powershell
+#windows powershell运行
+irm https://raw.githubusercontent.com/chenzai666/ip_monitor/refs/heads/main/ip_monitor.py | python -
+```
 
 **参数说明**
 
