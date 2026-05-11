@@ -14,6 +14,13 @@ if sys.platform == 'win32':
     os.environ['PYTHONIOENCODING'] = 'utf-8'
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
     sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    # 切换控制台代码页为 UTF-8（cp65001），解决 PowerShell 终端乱码
+    try:
+        import ctypes
+        ctypes.windll.kernel32.SetConsoleOutputCP(65001)
+        ctypes.windll.kernel32.SetConsoleCP(65001)
+    except Exception:
+        pass
 
 # 默认设置（跨平台）
 DEFAULT_LOG_DIR = str(Path.home() / ".ip_monitor")
