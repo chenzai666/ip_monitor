@@ -1,36 +1,26 @@
 #!/usr/bin/env python3
 """
-IP监控脚本 - 公网IP专用版本
-功能：
-1. 准确获取公网IP地址
-2. 使用人类可读的日志格式
-3. 跨平台兼容（Windows / Linux / macOS）
-4. 支持代理
+Public IP Monitor - Cross-platform (Windows / Linux / macOS)
+Usage:
+  python ip_monitor.py
+  python ip_monitor.py --verbose --proxy http://127.0.0.1:7890
+Remote execute:
+  Linux/macOS:  curl -Ls URL | python -
+  Windows:      irm URL | python -
 """
 
-# Windows 强制 UTF-8，必须在所有 import 之前
-import os, sys
-from pathlib import Path
-if sys.platform == 'win32':
-    os.environ['PYTHONIOENCODING'] = 'utf-8'
-    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
-    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
-    # 切换控制台代码页为 UTF-8（cp65001），解决 PowerShell 终端乱码
-    try:
-        import ctypes
-        ctypes.windll.kernel32.SetConsoleOutputCP(65001)
-        ctypes.windll.kernel32.SetConsoleCP(65001)
-    except Exception:
-        pass
-
+import os
+import sys
+import re
 import argparse
 import platform
 import ssl
 import urllib.request
 import urllib.error
+from pathlib import Path
 from datetime import datetime
 
-# 默认设置（跨平台）
+# Defaults
 DEFAULT_LOG_DIR = str(Path.home() / ".ip_monitor")
 DEFAULT_LOG_FILE = os.path.join(DEFAULT_LOG_DIR, "ip_history.log")
 
@@ -42,9 +32,9 @@ IP_API_SERVICES = [
     "https://ipinfo.io/ip"
 ]
 
+
 def get_public_ip(proxy=None):
-    """准确获取公网IP地址"""
-    # 注意：禁用SSL验证存在安全风险，仅用于IP查询场景
+    """Get public IP address"""
     ctx = ssl.create_default_context()
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
@@ -55,12 +45,9 @@ def get_public_ip(proxy=None):
         "Chrome/120.0.0.0 Safari/537.36"
     )
 
-    # 将自定义 SSL 上下文包装成 HTTPSHandler，传给 build_opener
     https_handler = urllib.request.HTTPSHandler(context=ctx)
-
     handlers = [https_handler]
     if proxy:
-        # proxy 格式如 "http://127.0.0.1:7890"
         handlers.append(urllib.request.ProxyHandler({'http': proxy, 'https': proxy}))
 
     opener = urllib.request.build_opener(*handlers)
@@ -74,22 +61,19 @@ def get_public_ip(proxy=None):
                     return ip
         except (urllib.error.URLError, urllib.error.HTTPError,
                 ConnectionResetError, TimeoutError) as e:
-            if hasattr(e, 'reason'):
-                reason = str(e.reason)
-            else:
-                reason = str(e)
-            print(f"  - 服务 {service} 失败: {reason}")
+            reason = str(e.reason) if hasattr(e, 'reason') else str(e)
+            print(f"  - {service} failed: {reason}")
             continue
         except Exception as e:
-            print(f"  - 服务 {service} 出错: {str(e)}")
+            print(f"  - {service} error: {str(e)}")
             continue
 
-    print("错误: 所有公网IP服务均失败，无法获取公网IP!")
+    print("ERROR: All IP services failed!")
     return None
 
 
 def validate_ip(ip):
-    """验证IP地址格式，并排除私有地址"""
+    """Validate IP format and exclude private ranges (RFC 1918)"""
     parts = ip.split('.')
     if len(parts) != 4:
         return False
@@ -103,11 +87,10 @@ def validate_ip(ip):
             return False
         nums.append(num)
 
-    # 排除私有IP地址范围（RFC 1918）
     # 10.0.0.0/8
     if nums[0] == 10:
         return False
-    # 172.16.0.0/12 → 172.16.0.0 ~ 172.31.255.255
+    # 172.16.0.0/12
     if nums[0] == 172 and 16 <= nums[1] <= 31:
         return False
     # 192.168.0.0/16
@@ -118,54 +101,52 @@ def validate_ip(ip):
 
 
 def setup_logging(log_path):
-    """创建日志目录和文件"""
+    """Create log directory and file if not exist"""
     try:
         log_dir = os.path.dirname(log_path)
         if not os.path.exists(log_dir):
             os.makedirs(log_dir, exist_ok=True)
-            print(f"已创建日志目录: {log_dir}")
+            print(f"Created log dir: {log_dir}")
 
         if not os.path.exists(log_path):
-            with open(log_path, 'w', encoding='utf-8') as f:
-                f.write("# IP监控日志 - 格式: [时间] [状态] [IP地址] [变化详情]\n")
-                f.write("# 状态: INIT=初始, CHANGED=变更, UNCHANGED=未变\n")
+            with open(log_path, 'w') as f:
+                f.write("# IP Monitor Log - Format: [Time] [Status] [IP] [Details]\n")
+                f.write("# Status: INIT=First, CHANGED=IP changed, UNCHANGED=No change\n")
                 f.write("#" * 80 + "\n")
             try:
                 os.chmod(log_path, 0o644)
             except AttributeError:
-                pass  # Windows 不支持 chmod
-            print(f"已创建日志文件: {log_path}")
+                pass
+            print(f"Created log file: {log_path}")
 
         return True
     except Exception as e:
-        print(f"日志设置失败: {str(e)}")
+        print(f"Log setup failed: {str(e)}")
         return False
 
 
 def write_log_entry(log_path, timestamp, status, ip, previous_ip=None):
-    """写入人类可读的日志条目"""
+    """Write a log entry"""
     try:
-        with open(log_path, 'a', encoding='utf-8') as f:
+        with open(log_path, 'a') as f:
             if status == "INIT":
-                f.write(f"[{timestamp}] INIT      {ip} (首次记录)\n")
+                f.write(f"[{timestamp}] INIT      {ip} (first record)\n")
             elif status == "CHANGED":
                 f.write(f"[{timestamp}] CHANGED   {previous_ip} -> {ip}\n")
-            else:  # UNCHANGED
-                f.write(f"[{timestamp}] UNCHANGED {ip} (与上次相同)\n")
+            else:
+                f.write(f"[{timestamp}] UNCHANGED {ip} (same as last)\n")
         return True
     except Exception as e:
-        print(f"日志写入失败: {str(e)}")
+        print(f"Write log failed: {str(e)}")
         return False
 
 
 def read_last_ip(log_path):
-    """从日志文件中读取上一次记录的IP（二进制读取，兼容任何编码）"""
+    """Read last recorded IP from log file (binary read, encoding agnostic)"""
     if not os.path.exists(log_path):
         return None
 
     try:
-        import re
-        # 用二进制模式读取，完全不依赖文件编码
         with open(log_path, 'rb') as f:
             f.seek(0, os.SEEK_END)
             file_size = f.tell()
@@ -187,75 +168,57 @@ def read_last_ip(log_path):
                     buf = bytearray()
                 else:
                     buf.extend(ch)
-            # 文件末尾没有换行的情况
             if buf:
                 line = buf.decode('ascii', errors='replace')[::-1].strip()
                 match = re.search(r'\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b', line)
                 if match:
                     return match.group(1)
     except Exception as e:
-        print(f"读取日志文件失败: {str(e)}")
+        print(f"Read log failed: {str(e)}")
 
     return None
 
 
 def main():
     print("=" * 60)
-    print(f"IP监控脚本启动 - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"操作系统: {platform.system()} {platform.release()}")
-    print(f"Python版本: {platform.python_version()}")
+    print(f"IP Monitor - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"OS: {platform.system()} {platform.release()}")
+    print(f"Python: {platform.python_version()}")
     print("=" * 60)
 
-    parser = argparse.ArgumentParser(
-        description='公网IP监控工具',
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter
-    )
-    parser.add_argument(
-        '--log', default=DEFAULT_LOG_FILE,
-        help='日志文件路径'
-    )
-    parser.add_argument(
-        '--proxy', default=None,
-        help='使用代理服务器（格式: http://proxy:port）'
-    )
-    parser.add_argument(
-        '--verbose', action='store_true',
-        help='显示详细输出'
-    )
+    parser = argparse.ArgumentParser(description='Public IP Monitor')
+    parser.add_argument('--log', default=DEFAULT_LOG_FILE, help='Log file path')
+    parser.add_argument('--proxy', default=None, help='Proxy (http://ip:port)')
+    parser.add_argument('--verbose', action='store_true', help='Verbose output')
     args = parser.parse_args()
 
     log_path = os.path.abspath(args.log)
 
-    # 创建日志目录和文件
     if not setup_logging(log_path):
-        print("错误: 日志设置失败，退出程序")
+        print("ERROR: Log setup failed, exit.")
         sys.exit(1)
 
-    # 获取当前时间和公网IP
     start_time = datetime.now()
     timestamp = start_time.strftime('%Y-%m-%d %H:%M:%S')
 
-    print("正在获取公网IP...")
+    print("Fetching public IP...")
     if args.verbose:
-        print(f"  - 使用代理: {args.proxy if args.proxy else '无'}")
-        print(f"  - 尝试的服务: {', '.join(IP_API_SERVICES)}")
+        print(f"  - Proxy: {args.proxy if args.proxy else 'none'}")
+        print(f"  - Services: {', '.join(IP_API_SERVICES)}")
 
     current_ip = get_public_ip(args.proxy)
 
     if not current_ip:
-        error_msg = f"[{timestamp}] 错误: 无法获取公网IP"
-        print(error_msg)
+        print(f"[{timestamp}] ERROR: Cannot get public IP")
         try:
-            with open(log_path, 'a', encoding='utf-8') as f:
-                f.write(f"[{timestamp}] ERROR 无法获取公网IP\n")
+            with open(log_path, 'a') as f:
+                f.write(f"[{timestamp}] ERROR Cannot get public IP\n")
         except Exception:
             pass
         sys.exit(1)
 
-    # 读取上次记录的IP
     last_ip = read_last_ip(log_path)
 
-    # 确定状态
     if last_ip is None:
         status = "INIT"
     elif current_ip != last_ip:
@@ -263,34 +226,30 @@ def main():
     else:
         status = "UNCHANGED"
 
-    # 写入日志文件
     write_log_entry(log_path, timestamp, status, current_ip, last_ip)
 
-    # 控制台输出
     exec_time = (datetime.now() - start_time).total_seconds()
 
-    print("\n公网IP监控结果:")
-    print(f"  - 公网IP地址: {current_ip}")
+    print(f"\nResult:")
+    print(f"  - Public IP: {current_ip}")
 
-    # 再次检查（validate_ip 已排除私有IP，能到这里说明是公网IP）
-    # 额外警告：如果 validate_ip 被绕过，这里兜底提示
     if (current_ip.startswith("10.") or
             current_ip.startswith("192.168.") or
             (current_ip.startswith("172.") and
              16 <= int(current_ip.split('.')[1]) <= 31)):
-        print("  ⚠ 警告: 检测到私有IP地址，可能未正确获取公网IP")
+        print("  - WARNING: Private IP detected, may not be correct")
 
     if status == "INIT":
-        print(f"  - 状态: 首次记录")
+        print(f"  - Status: First record")
     elif status == "CHANGED":
-        print(f"  - 状态: IP变更 ({last_ip} -> {current_ip})")
+        print(f"  - Status: IP changed ({last_ip} -> {current_ip})")
     else:
-        print(f"  - 状态: IP未变化")
+        print(f"  - Status: No change")
 
-    print(f"  - 日志文件: {log_path}")
-    print(f"  - 执行耗时: {exec_time:.2f}秒")
+    print(f"  - Log: {log_path}")
+    print(f"  - Time: {exec_time:.2f}s")
     print("-" * 60)
-    print(f"IP监控完成 - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"Done - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 
 if __name__ == "__main__":
