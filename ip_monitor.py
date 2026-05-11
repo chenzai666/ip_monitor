@@ -8,22 +8,12 @@ IP监控脚本 - 公网IP专用版本
 4. 支持代理
 """
 
-import os
-import sys
-import io
-import argparse
-import platform
-import json
-import ssl
-import urllib.request
-import urllib.error
-from datetime import datetime
-from pathlib import Path
-
-# Windows 控制台强制 UTF-8 输出，避免中文乱码
+# Windows 强制 UTF-8，必须在所有 import 之前
+import os, sys
 if sys.platform == 'win32':
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    os.environ['PYTHONIOENCODING'] = 'utf-8'
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
 # 默认设置（跨平台）
 DEFAULT_LOG_DIR = str(Path.home() / ".ip_monitor")
